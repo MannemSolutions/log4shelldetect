@@ -110,12 +110,12 @@ func (j *jar) checkFile(pathToFile string, rd io.ReaderAt, size int64, depth int
 
 	err := func() error {
 		if rd == nil {
+			// #nosec G304
 			f, err := os.Open(pathToFile)
 			if err != nil {
 				j.desc = append(j.desc, err.Error())
 				return err
 			}
-			defer f.Close()
 
 			stat, err := f.Stat()
 			if err != nil {
