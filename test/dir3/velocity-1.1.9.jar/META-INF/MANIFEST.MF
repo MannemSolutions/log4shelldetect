@@ -1,0 +1,8 @@
+Manifest-Version: 1.0
+Main-Class: com.velocitypowered.proxy.Velocity
+Implementation-Title: Velocity
+Implementation-Version: 1.1.9
+Implementation-Vendor: Velocity Contributors
+Multi-Release: true
+Add-Opens: java.base/java.lang
+
