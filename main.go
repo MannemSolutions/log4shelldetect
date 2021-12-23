@@ -237,7 +237,7 @@ func (j jar) printState() {
 	defer printMutex.Unlock()
 
 	jState := j.getState()
-	if jState == "OK" && ! *logOk {
+	if jState == "NOLOG4J" && ! *logOk {
 		return
 	}
 	if *logHash {
@@ -249,7 +249,7 @@ func (j jar) printState() {
 	}
 	if *logVersion {
 		if j.version == nil {
-			cols = append(cols, "UNKNOWN   ")
+			cols = append(cols, "NOLOG4J   ")
 		 } else {
 			cols = append(cols, fmt.Sprintf("%-10.10s", j.version.String()))
 		}
@@ -259,7 +259,7 @@ func (j jar) printState() {
 	fmt.Println(strings.Join(cols, " "))
 }
 
-var logOk = flag.Bool("ok", false, "also report OK lines")
+var logOk = flag.Bool("ok", false, "also report jar files without log4j")
 var debug = flag.Bool("debug", false, "print debug messages")
 var logHash = flag.Bool("hash", false, "print sha-256 hash of JndiLookup.class")
 var logVersion = flag.Bool("l4jversion", false, "print version of log4j")
