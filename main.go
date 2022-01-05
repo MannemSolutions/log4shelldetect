@@ -38,9 +38,9 @@ func (j *jar) check() {
 			func(osPathname string, info os.FileInfo, err error) error {
 				if strings.HasSuffix(osPathname, "log4j/core/lookup/JndiLookup.class") {
 					if size, err := FileSize(osPathname); err != nil {
-						return errors.New("cannot get size of pom.properties")
+						return errors.New("cannot get size of JndiLookup.class")
 					} else if size > int64(math.Pow(2, 20)) {
-						return errors.New("pom.properties is too big")
+						return errors.New("JndiLookup.class is too big")
 					}
 					if data, err := os.ReadFile(osPathname); err != nil {
 						return err
