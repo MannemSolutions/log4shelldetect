@@ -13,21 +13,6 @@ var debug = flag.Bool("debug", false, "print debug messages")
 var logHash = flag.Bool("hash", false, "print sha-256 hash of JndiLookup.class")
 var logVersion = flag.Bool("l4jversion", false, "print version of log4j")
 
-func IsDirectory(path string) (bool, error) {
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		return false, err
-	}
-	return fileInfo.IsDir(), err
-}
-func FileSize(path string) (int64, error) {
-	fileInfo, err := os.Stat(path)
-	if err != nil {
-		return -1, err
-	}
-	return fileInfo.Size(), err
-}
-
 func main() {
 	flag.Parse()
 
@@ -44,7 +29,7 @@ func main() {
 
 	target := flag.Arg(0)
 
-	if isDir, err := IsDirectory(target); err != nil && !isDir {
+	if isDir, err := jar.IsDirectory(target); err != nil && !isDir {
 		j := jar.NewJar(target, *debug)
 		j.CheckFile(target, nil, 0, 0)
 		j.PrintState(*logOk, *logHash, *logVersion)
