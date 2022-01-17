@@ -11,17 +11,17 @@ Or download the container image from [dockerhub](https://hub.docker.com/r/mannem
 
 ```
 cd /tmp
-curl -L https://github.com/MannemSolutions/log4shelldetect/releases/download/v0.9.1/log4shelldetect-v0.9.1-linux-amd64.tar.gz | tar -xvz
+curl -L https://github.com/MannemSolutions/log4shelldetect/releases/download/v0.9.2/log4shelldetect-v0.9.2-linux-amd64.tar.gz | tar -xvz
 ./log4shelldetect -hash -l4jversion -ok test/
 ```
 
 ### Example result:
 ```
-84057480ba7da6fb6d9ea50c53a00848315833c1f34bf8f4a47f11a14499ae3f 2.16.0     LOG4J   test/dir/log4j-core-2.16.0b.jar
-UNKNOWN                                                          2.13.3     PATCHED test/dir2/velocity-1.1.9.jar
-e4abe8708d914d20887d0704ea42b1914eb50e638c3016d8f8d312b39592a768 2.13.3     LOG4J   test/dir3/velocity-1.1.9.jar
-UNKNOWN                                                          2.0.0-beta PATCHED test/file/log4j-core-2.0-beta6.jar
-e4abe8708d914d20887d0704ea42b1914eb50e638c3016d8f8d312b39592a768 2.13.3     LOG4J   test/file/velocity-1.1.9.war
+84057480ba7da6fb6d9ea50c53a00848315833c1f34bf8f4a47f11a14499ae3f 2.16.0     LOG4J      test/dir/log4j-core-2.16.0b.jar
+UNKNOWN                                                          2.13.3     WORKAROUND test/dir2/velocity-1.1.9.jar
+e4abe8708d914d20887d0704ea42b1914eb50e638c3016d8f8d312b39592a768 2.13.3     LOG4J      test/dir3/velocity-1.1.9.jar
+UNKNOWN                                                          2.0.0-beta WORKAROUND test/file/log4j-core-2.0-beta6.jar
+e4abe8708d914d20887d0704ea42b1914eb50e638c3016d8f8d312b39592a768 2.13.3     LOG4J      test/file/velocity-1.1.9.war
 ```
 
 In this result:
