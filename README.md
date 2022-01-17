@@ -34,14 +34,16 @@ In this result:
   * can be subfolder (e.a. `a/b/c/META-INF/...`)
 * lists the state:
   * LOG4J: log4j was detected
-  * PATCHED: log4j was detecetd, but log4j/core/lookup/JndiLookup.class was patched
+  * WORKAROUND: log4j was detected, but log4j/core/lookup/JndiLookup.class was removed as a workaround to the CVE issue
   * NOLOG4J: log4j was not detected
+  * EMPTY: The file is not a jar, but an empty file
+  * NOFILE: The file is a symlink pointing to a file that does not exist
+  * NOZIP: The file cannot be opened with the zip module
   * UNKNOWN: a weird situation has occurred. Run with -debug to get more details...
 * lists the path to the jar or war file
 
 ## Issues
 If you run into any issue, please let us know (file an issue on github, or mail me at sebas@mannemsolutions.nl).
-
 
 ## License
 

@@ -1,4 +1,4 @@
-module github.com/1lann/log4shelldetect
+module github.com/mannemsolutions/log4shelldetect
 
 go 1.17
 
