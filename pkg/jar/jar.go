@@ -118,7 +118,7 @@ func (j *Jar) CheckFile(pathToFile string, rd io.ReaderAt, size int64, depth int
 			// #nosec G304
 			f, err := os.Open(pathToFile)
 			if err != nil {
-				return err
+				return FileError{FileErrorNoFile}
 			}
 
 			stat, err := f.Stat()
