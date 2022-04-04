@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/go-version"
 	"io"
+	"log"
 	"math"
 	"os"
 	"path"
@@ -24,6 +25,7 @@ type Jar struct {
 	hash       string
 	fileErrors FileErrors
 	debug      bool
+	checkPaths []string
 }
 
 func NewJar(name string, debug bool) (j *Jar) {
@@ -33,54 +35,83 @@ func NewJar(name string, debug bool) (j *Jar) {
 	}
 }
 
-func (j *Jar) Check() {
+func (j *Jar) AddPath(path string) {
+	if j.debug {
+		log.Printf("Adding path %s", path)
+	}
+	j.checkPaths = append(j.checkPaths, path)
+}
+
+func (j Jar) CheckFile(path string) ([]byte, error) {
+	for _, checkPath := range j.checkPaths {
+		if j.debug {
+			log.Printf("checking %s against %s", path, checkPath)
+		}
+		if strings.HasSuffix(path, checkPath) {
+			if size, err := FileSize(path); err != nil {
+				return nil, fmt.Errorf("cannot get size of %s", path)
+			} else if size > int64(math.Pow(2, 20)) {
+				return nil, fmt.Errorf("%s is too big", path)
+			}
+			if data, err := os.ReadFile(path); err != nil {
+				return nil, err
+			} else {
+				return data, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (j Jar) CheckFileInZip(file *zip.File) ([]byte, error) {
+	for _, checkPath := range j.checkPaths {
+		if strings.HasSuffix(file.Name, checkPath) {
+
+			if file.UncompressedSize64 > uint64(math.Pow(2, 20)) {
+				return nil, errors.New("JndiLookup.class is too big")
+			}
+			subRd, err := file.Open()
+			if err != nil {
+				return nil, err
+			}
+
+			if data, err := io.ReadAll(subRd); err != nil {
+				return nil, err
+			} else if err = subRd.Close(); err != nil {
+				return nil, err
+			} else {
+				return data, nil
+			}
+		}
+	}
+	return nil, nil
+}
+
+func (j *Jar) CheckPath() {
 	var sVersion string
 	if isDir, err := IsDirectory(j.name); err != nil {
 		j.fileErrors = append(j.fileErrors, FileError{FileErrorNoFile})
 	} else if isDir {
 		err := filepath.Walk(j.name,
-			func(osPathname string, info os.FileInfo, err error) error {
-				if strings.HasSuffix(osPathname, "log4j/core/lookup/JndiLookup.class") {
-					if size, err := FileSize(osPathname); err != nil {
-						return errors.New("cannot get size of JndiLookup.class")
-					} else if size > int64(math.Pow(2, 20)) {
-						return errors.New("JndiLookup.class is too big")
-					}
-					if data, err := os.ReadFile(osPathname); err != nil {
-						return err
-					} else {
+			func(osPath string, info os.FileInfo, err error) error {
+				if data, err := j.CheckFile(osPath); err != nil {
+					return err
+				} else if data != nil {
+					if strings.HasSuffix(osPath, ".class") {
 						j.hash = fmt.Sprintf("%x", sha256.Sum256(data))
-					}
-				}
-				if strings.HasSuffix(osPathname, "META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties") {
-					if size, err := FileSize(osPathname); err != nil {
-						return errors.New("cannot get size of pom.properties")
-					} else if size > int64(math.Pow(2, 20)) {
-						return errors.New("pom.properties is too big")
-					}
-					if data, err := os.ReadFile(osPathname); err != nil {
-						return err
-					} else {
-						sVersion = ""
-						lines := string(data)
-						for _, line := range strings.Split(lines, "\n") {
-							if strings.HasPrefix(line, "version=") {
-								sVersion = strings.Replace(line, "version=", "", 1)
-							}
-						}
+					} else if strings.HasSuffix(osPath, "/pom.properties") {
+						sVersion = versionFromPom(data)
 						if sVersion == "" {
-							return fmt.Errorf("could not find version in pom.properties %s\n", j.name)
-						} else if jVersion, err := version.NewVersion(sVersion); err != nil {
-							return fmt.Errorf("invalid version in pom.properties %s for %s\n", sVersion, j.name)
-						} else {
-							j.setVersion(jVersion)
+							return fmt.Errorf("could not find version in %s\n", osPath)
+						} else if j.version, err = version.NewVersion(sVersion); err != nil {
+							return fmt.Errorf("invalid version %s in %s\n", sVersion, osPath)
 						}
 					}
-				} else if osPathname == j.name {
+				} else if osPath == j.name {
 					// Skipping this jar because it is me
-				} else if path.Ext(osPathname) == ".jar" || path.Ext(osPathname) == ".war" {
-					subJar := Jar{name: osPathname}
-					subJar.Check()
+				} else if path.Ext(osPath) == ".jar" || path.Ext(osPath) == ".war" {
+					subJar := Jar{name: osPath}
+					subJar.CheckPath()
 					j.setVersion(subJar.version)
 				}
 				return nil
@@ -96,11 +127,11 @@ func (j *Jar) Check() {
 			}
 		}
 	} else {
-		j.CheckFile(j.name, nil, 0, 0)
+		j.CheckZip(j.name, nil, 0, 0)
 	}
 }
 
-func (j *Jar) CheckFile(pathToFile string, rd io.ReaderAt, size int64, depth int) {
+func (j *Jar) CheckZip(pathToFile string, rd io.ReaderAt, size int64, depth int) {
 	var sVersion string
 	if depth > 100 {
 		j.fileErrors = append(j.fileErrors, FileError{FileErrorUnknown})
@@ -139,45 +170,17 @@ func (j *Jar) CheckFile(pathToFile string, rd io.ReaderAt, size int64, depth int
 		}
 
 		for _, file := range zipRd.File {
-			if strings.HasSuffix(file.Name, "log4j/core/lookup/JndiLookup.class") {
-				if file.UncompressedSize64 > uint64(math.Pow(2, 20)) {
-					return errors.New("JndiLookup.class is too big")
-				}
-				subRd, err := file.Open()
-				if err != nil {
-					return err
-				}
-
-				if data, err := io.ReadAll(subRd); err != nil {
-					return err
-				} else {
+			if data, err := j.CheckFileInZip(file); err != nil {
+				return err
+			} else if data != nil {
+				if strings.HasSuffix(file.Name, ".class") {
 					j.hash = fmt.Sprintf("%x", sha256.Sum256(data))
-				}
-				_ = subRd.Close()
-			} else if strings.HasSuffix(file.Name, "META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties") {
-				if file.UncompressedSize64 > uint64(math.Pow(2, 20)) {
-					return errors.New("pom.properties is too big")
-				}
-				subRd, err := file.Open()
-				if err != nil {
-					return err
-				}
-
-				if data, err := io.ReadAll(subRd); err != nil {
-					return err
-				} else {
-					lines := string(data)
-					for _, line := range strings.Split(lines, "\n") {
-						if strings.HasPrefix(line, "version=") {
-							sVersion = strings.Replace(line, "version=", "", 1)
-						}
-					}
+				} else if strings.HasSuffix(file.Name, "/pom.properties") {
+					sVersion = versionFromPom(data)
 					if sVersion == "" {
-						return fmt.Errorf("could not find version in pom.properties %s\n", j.name)
-					} else if jVersion, err := version.NewVersion(sVersion); err != nil {
-						return fmt.Errorf("invalid version in pom.properties %s for %s\n", sVersion, j.name)
-					} else {
-						j.setVersion(jVersion)
+						return fmt.Errorf("could not find version in %s in %s\n", file.Name, j.name)
+					} else if j.version, err = version.NewVersion(sVersion); err != nil {
+						return fmt.Errorf("invalid version %s in %s in %s\n", sVersion, file.Name, j.name)
 					}
 				}
 			} else if path.Ext(file.Name) == ".jar" || path.Ext(file.Name) == ".war" {
@@ -189,7 +192,6 @@ func (j *Jar) CheckFile(pathToFile string, rd io.ReaderAt, size int64, depth int
 						if err != nil {
 							return err
 						}
-
 						buf := bytes.NewBuffer(make([]byte, 0, file.UncompressedSize64))
 						_, err = buf.ReadFrom(subRd)
 						_ = subRd.Close()
@@ -197,7 +199,7 @@ func (j *Jar) CheckFile(pathToFile string, rd io.ReaderAt, size int64, depth int
 							return err
 						}
 
-						j.CheckFile(pathToFile, bytes.NewReader(buf.Bytes()), int64(buf.Len()), depth+1)
+						j.CheckZip(pathToFile, bytes.NewReader(buf.Bytes()), int64(buf.Len()), depth+1)
 						return nil
 					}()
 					if err != nil {
@@ -239,11 +241,11 @@ func (j Jar) getState() string {
 	if j.fileErrors.MaxID() > FileErrorNone {
 		return j.fileErrors.MaxID().String()
 	} else if j.version == nil {
-		return "NOLOG4J"
+		return "UNDETECTED"
 	} else if j.hash == "" {
 		return "WORKAROUND"
 	} else {
-		return "LOG4J"
+		return "DETECTED"
 	}
 }
 func (j Jar) PrintState(logOk bool, logHash bool, logVersion bool) {
@@ -252,7 +254,7 @@ func (j Jar) PrintState(logOk bool, logHash bool, logVersion bool) {
 	defer printMutex.Unlock()
 
 	jState := j.getState()
-	if jState == "NOLOG4J" && !logOk {
+	if jState == "UNDETECTED" && !logOk {
 		return
 	}
 	if logHash {
@@ -264,7 +266,7 @@ func (j Jar) PrintState(logOk bool, logHash bool, logVersion bool) {
 	}
 	if logVersion {
 		if j.version == nil {
-			cols = append(cols, "NOLOG4J   ")
+			cols = append(cols, "UNDETECTED")
 		} else {
 			cols = append(cols, fmt.Sprintf("%-10.10s", j.version.String()))
 		}
