@@ -7,7 +7,7 @@ type Paths struct {
 	paths map[string]*regexp.Regexp
 }
 
-func GetPaths() Paths{
+func GetPaths() Paths {
 	return Paths{
 		paths: make(map[string]*regexp.Regexp),
 	}

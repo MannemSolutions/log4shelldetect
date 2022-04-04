@@ -265,8 +265,8 @@ func (j Jar) getState() string {
 	} else {
 		return "DETECTED"
 	}
-	return ""
 }
+
 func (j Jar) PrintState(logOk bool, logHash bool, logVersion bool) {
 	var cols []string
 	printMutex.Lock()

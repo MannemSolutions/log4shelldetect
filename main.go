@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/mannemsolutions/log4shelldetect/pkg/jar"
+	"log"
 	"os"
 	"path/filepath"
 )
@@ -32,7 +33,7 @@ func main() {
 	flag.Var(&myClasses, "class", "Module class files to scan for.")
 	flag.Parse()
 
-	if flag.Arg(0) == "" || len(myPoms) + len(myClasses) < 1 {
+	if flag.Arg(0) == "" || len(myPoms)+len(myClasses) < 1 {
 		fmt.Println("Usage: log4shelldetect [options] <path>")
 		fmt.Println("Scans a file or folder recursively for jar files that may be")
 		fmt.Println("vulnerable to Log4Shell (CVE-2021-44228) or other vulnerabilities")
@@ -47,10 +48,14 @@ func main() {
 		if isDir, err := jar.IsDirectory(target); err != nil && !isDir {
 			j := jar.NewJar(target, *debug)
 			for _, path := range myClasses {
-				j.AddClass(path)
+				if err := j.AddClass(path); err != nil {
+					log.Fatalln(err)
+				}
 			}
 			for _, path := range myPoms {
-				j.AddPom(path)
+				if err := j.AddPom(path); err != nil {
+					log.Fatalln(err)
+				}
 			}
 			j.CheckZip(target, nil, 0, 0)
 			j.PrintState(*logOk, *logHash, *logVersion)
@@ -64,10 +69,14 @@ func main() {
 				if filepath.Ext(osPathname) == ".jar" || filepath.Ext(osPathname) == ".war" {
 					j := jar.NewJar(osPathname, *debug)
 					for _, path := range myClasses {
-						j.AddClass(path)
+						if err := j.AddClass(path); err != nil {
+							log.Fatalln(err)
+						}
 					}
 					for _, path := range myPoms {
-						j.AddPom(path)
+						if err := j.AddPom(path); err != nil {
+							log.Fatalln(err)
+						}
 					}
 					pool <- struct{}{}
 					go func() {

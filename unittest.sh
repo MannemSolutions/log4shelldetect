@@ -2,6 +2,7 @@
 set -ex
 
 TMPFILE=$(mktemp)
+ln -sf DOESNTEXIST.jar test/broken/brokenlink.jar
 
 ./log4shelldetect -modversion -hash -class org/springframework/beans -class log4j/core/lookup/JndiLookup.class -pom META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties -class springframework/cloud/function/core -pom org.springframework.cloud/spring-cloud-function-core/pom.properties test/ > "$TMPFILE"
 

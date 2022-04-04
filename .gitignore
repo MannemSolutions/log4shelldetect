@@ -3,3 +3,6 @@
 dist/
 .idea
 log4shelldetect*
+# Seems like act (to run github actions locally) doesn't like this
+# Creating in unittest.sh instead
+test/broken/brokenlink.jar
