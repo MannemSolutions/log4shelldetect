@@ -1,6 +1,6 @@
 # log4shelldetect
 
-Scans a file or folder recursively for jar files that contain log4j by inspecting the class paths inside the jar.
+Scans a file or folder recursively for jar files that contain log4j and other modules by inspecting the class paths inside the jar.
 
 Use this info to find out if it may be vulnerable to Log4Shell (CVE-2021-44228).
 
@@ -11,8 +11,8 @@ Or download the container image from [dockerhub](https://hub.docker.com/r/mannem
 
 ```
 cd /tmp
-curl -L https://github.com/MannemSolutions/log4shelldetect/releases/download/v0.9.2b/log4shelldetect-v0.9.2b-linux-amd64.tar.gz | tar -xvz
-./log4shelldetect -hash -l4jversion -ok test/
+curl -L https://github.com/MannemSolutions/log4shelldetect/releases/download/v0.9.2b/log4shelldetect-v0.9.3-linux-amd64.tar.gz | tar -xvz
+./log4shelldetect -modversion -hash -class log4j/core/lookup/JndiLookup.class -pom META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties /
 ```
 
 ### Example result:
