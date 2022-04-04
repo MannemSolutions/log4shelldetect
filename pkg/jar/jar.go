@@ -25,57 +25,59 @@ type Jar struct {
 	hash       string
 	fileErrors FileErrors
 	debug      bool
-	checkPaths []string
+	poms       Paths
+	classes    Paths
 }
 
 func NewJar(name string, debug bool) (j *Jar) {
 	return &Jar{
-		name:  name,
-		debug: debug,
+		name:    name,
+		debug:   debug,
+		poms:    GetPaths(),
+		classes: GetPaths(),
 	}
 }
 
-func (j *Jar) AddPath(path string) {
-	j.checkPaths = append(j.checkPaths, path)
+func (j *Jar) AddPom(path string) error {
+	return j.poms.Add(path)
+}
+
+func (j *Jar) AddClass(path string) error {
+	return j.classes.Add(path)
 }
 
 func (j Jar) CheckFile(path string) ([]byte, error) {
-	for _, checkPath := range j.checkPaths {
-		if strings.Contains(path, checkPath) {
-			if size, err := FileSize(path); err != nil {
-				return nil, fmt.Errorf("cannot get size of %s", path)
-			} else if size > int64(math.Pow(2, 20)) {
-				return nil, fmt.Errorf("%s is too big", path)
-			}
-			if data, err := os.ReadFile(path); err != nil {
-				return nil, err
-			} else {
-				return data, nil
-			}
+	if j.poms.Matches(path) || j.classes.Matches(path) {
+		if size, err := FileSize(path); err != nil {
+			return nil, fmt.Errorf("cannot get size of %s", path)
+		} else if size > int64(math.Pow(2, 20)) {
+			return nil, fmt.Errorf("%s is too big", path)
+		}
+		if data, err := os.ReadFile(path); err != nil {
+			return nil, err
+		} else {
+			return data, nil
 		}
 	}
 	return nil, nil
 }
 
 func (j Jar) CheckFileInZip(file *zip.File) ([]byte, error) {
-	for _, checkPath := range j.checkPaths {
-		if strings.Contains(file.Name, checkPath) {
+	if j.poms.Matches(file.Name) || j.classes.Matches(file.Name) {
+		if file.UncompressedSize64 > uint64(math.Pow(2, 20)) {
+			return nil, errors.New("JndiLookup.class is too big")
+		}
+		subRd, err := file.Open()
+		if err != nil {
+			return nil, err
+		}
 
-			if file.UncompressedSize64 > uint64(math.Pow(2, 20)) {
-				return nil, errors.New("JndiLookup.class is too big")
-			}
-			subRd, err := file.Open()
-			if err != nil {
-				return nil, err
-			}
-
-			if data, err := io.ReadAll(subRd); err != nil {
-				return nil, err
-			} else if err = subRd.Close(); err != nil {
-				return nil, err
-			} else {
-				return data, nil
-			}
+		if data, err := io.ReadAll(subRd); err != nil {
+			return nil, err
+		} else if err = subRd.Close(); err != nil {
+			return nil, err
+		} else {
+			return data, nil
 		}
 	}
 	return nil, nil
@@ -91,12 +93,14 @@ func (j *Jar) CheckPath() {
 				if data, err := j.CheckFile(osPath); err != nil {
 					return err
 				} else if data != nil {
-					if strings.HasSuffix(osPath, ".class") {
+					if j.classes.Matches(osPath) {
+						//log.Printf("class: %s", osPath)
 						j.hash = fmt.Sprintf("%x", sha256.Sum256(data))
 						if j.debug {
 							log.Printf("%s:%s has hash %s", j.name, osPath, j.hash)
 						}
-					} else if strings.HasSuffix(osPath, "/pom.properties") {
+					} else if j.poms.Matches(osPath) {
+						//log.Printf("pom: %s", osPath)
 						sVersion = versionFromPom(data)
 						if sVersion == "" {
 							return fmt.Errorf("could not find version in %s\n", osPath)
@@ -174,12 +178,14 @@ func (j *Jar) CheckZip(pathToFile string, rd io.ReaderAt, size int64, depth int)
 			if data, err := j.CheckFileInZip(file); err != nil {
 				return err
 			} else if data != nil {
-				if strings.HasSuffix(file.Name, ".class") {
+				if j.classes.Matches(file.Name) {
+					//log.Printf("class: %s", file.Name)
 					j.hash = fmt.Sprintf("%x", sha256.Sum256(data))
 					if j.debug {
 						log.Printf("%s:%s has hash %s", j.name, file.Name, j.hash)
 					}
-				} else if strings.HasSuffix(file.Name, "/pom.properties") {
+				} else if j.poms.Matches(file.Name) {
+					//log.Printf("pom: %s", file.Name)
 					sVersion = versionFromPom(data)
 					if sVersion == "" {
 						return fmt.Errorf("could not find version in %s in %s\n", file.Name, j.name)

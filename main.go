@@ -13,24 +13,26 @@ var debug = flag.Bool("debug", false, "print debug messages")
 var logHash = flag.Bool("hash", false, "print sha-256 hash of detected .class file")
 var logVersion = flag.Bool("modversion", false, "print version of module")
 
-type arrayFlags []string
+type arrayPaths []string
 
-func (i *arrayFlags) String() string {
+func (i *arrayPaths) String() string {
 	return "module classes / pom files to scan for. Can be supplied multiple times. Supply at least once."
 }
 
-func (i *arrayFlags) Set(value string) error {
+func (i *arrayPaths) Set(value string) error {
 	*i = append(*i, value)
 	return nil
 }
 
-var myFlags arrayFlags
+var myPoms arrayPaths
+var myClasses arrayPaths
 
 func main() {
-	flag.Var(&myFlags, "mod", "List of module files to scan for.")
+	flag.Var(&myPoms, "pom", "Module pom files to scan for.")
+	flag.Var(&myClasses, "class", "Module class files to scan for.")
 	flag.Parse()
 
-	if flag.Arg(0) == "" || len(myFlags) < 1 {
+	if flag.Arg(0) == "" || len(myPoms) + len(myClasses) < 1 {
 		fmt.Println("Usage: log4shelldetect [options] <path>")
 		fmt.Println("Scans a file or folder recursively for jar files that may be")
 		fmt.Println("vulnerable to Log4Shell (CVE-2021-44228) or other vulnerabilities")
@@ -44,8 +46,11 @@ func main() {
 	for _, target := range flag.Args() {
 		if isDir, err := jar.IsDirectory(target); err != nil && !isDir {
 			j := jar.NewJar(target, *debug)
-			for _, path := range myFlags {
-				j.AddPath(path)
+			for _, path := range myClasses {
+				j.AddClass(path)
+			}
+			for _, path := range myPoms {
+				j.AddPom(path)
 			}
 			j.CheckZip(target, nil, 0, 0)
 			j.PrintState(*logOk, *logHash, *logVersion)
@@ -58,8 +63,11 @@ func main() {
 			func(osPathname string, info os.FileInfo, err error) error {
 				if filepath.Ext(osPathname) == ".jar" || filepath.Ext(osPathname) == ".war" {
 					j := jar.NewJar(osPathname, *debug)
-					for _, path := range myFlags {
-						j.AddPath(path)
+					for _, path := range myClasses {
+						j.AddClass(path)
+					}
+					for _, path := range myPoms {
+						j.AddPom(path)
 					}
 					pool <- struct{}{}
 					go func() {
