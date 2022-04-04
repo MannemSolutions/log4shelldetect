@@ -36,18 +36,12 @@ func NewJar(name string, debug bool) (j *Jar) {
 }
 
 func (j *Jar) AddPath(path string) {
-	if j.debug {
-		log.Printf("Adding path %s", path)
-	}
 	j.checkPaths = append(j.checkPaths, path)
 }
 
 func (j Jar) CheckFile(path string) ([]byte, error) {
 	for _, checkPath := range j.checkPaths {
-		if j.debug {
-			log.Printf("checking %s against %s", path, checkPath)
-		}
-		if strings.HasSuffix(path, checkPath) {
+		if strings.Contains(path, checkPath) {
 			if size, err := FileSize(path); err != nil {
 				return nil, fmt.Errorf("cannot get size of %s", path)
 			} else if size > int64(math.Pow(2, 20)) {
@@ -65,7 +59,7 @@ func (j Jar) CheckFile(path string) ([]byte, error) {
 
 func (j Jar) CheckFileInZip(file *zip.File) ([]byte, error) {
 	for _, checkPath := range j.checkPaths {
-		if strings.HasSuffix(file.Name, checkPath) {
+		if strings.Contains(file.Name, checkPath) {
 
 			if file.UncompressedSize64 > uint64(math.Pow(2, 20)) {
 				return nil, errors.New("JndiLookup.class is too big")
@@ -99,12 +93,19 @@ func (j *Jar) CheckPath() {
 				} else if data != nil {
 					if strings.HasSuffix(osPath, ".class") {
 						j.hash = fmt.Sprintf("%x", sha256.Sum256(data))
+						if j.debug {
+							log.Printf("%s:%s has hash %s", j.name, osPath, j.hash)
+						}
 					} else if strings.HasSuffix(osPath, "/pom.properties") {
 						sVersion = versionFromPom(data)
 						if sVersion == "" {
 							return fmt.Errorf("could not find version in %s\n", osPath)
 						} else if j.version, err = version.NewVersion(sVersion); err != nil {
 							return fmt.Errorf("invalid version %s in %s\n", sVersion, osPath)
+						} else {
+							if j.debug {
+								log.Printf("%s:%s reads version %s", j.name, osPath, j.version)
+							}
 						}
 					}
 				} else if osPath == j.name {
@@ -175,12 +176,19 @@ func (j *Jar) CheckZip(pathToFile string, rd io.ReaderAt, size int64, depth int)
 			} else if data != nil {
 				if strings.HasSuffix(file.Name, ".class") {
 					j.hash = fmt.Sprintf("%x", sha256.Sum256(data))
+					if j.debug {
+						log.Printf("%s:%s has hash %s", j.name, file.Name, j.hash)
+					}
 				} else if strings.HasSuffix(file.Name, "/pom.properties") {
 					sVersion = versionFromPom(data)
 					if sVersion == "" {
 						return fmt.Errorf("could not find version in %s in %s\n", file.Name, j.name)
 					} else if j.version, err = version.NewVersion(sVersion); err != nil {
 						return fmt.Errorf("invalid version %s in %s in %s\n", sVersion, file.Name, j.name)
+					} else {
+						if j.debug {
+							log.Printf("%s:%s reads version %s", j.name, file.Name, j.version)
+						}
 					}
 				}
 			} else if path.Ext(file.Name) == ".jar" || path.Ext(file.Name) == ".war" {
@@ -240,13 +248,18 @@ func (j *Jar) setVersion(newVersion *version.Version) bool {
 func (j Jar) getState() string {
 	if j.fileErrors.MaxID() > FileErrorNone {
 		return j.fileErrors.MaxID().String()
-	} else if j.version == nil {
-		return "UNDETECTED"
+	} else if j.version != nil {
+		if j.hash != "" {
+			return "DETECTED"
+		} else {
+			return "WORKAROUND"
+		}
 	} else if j.hash == "" {
-		return "WORKAROUND"
+		return "UNDETECTED"
 	} else {
 		return "DETECTED"
 	}
+	return ""
 }
 func (j Jar) PrintState(logOk bool, logHash bool, logVersion bool) {
 	var cols []string
@@ -266,9 +279,9 @@ func (j Jar) PrintState(logOk bool, logHash bool, logVersion bool) {
 	}
 	if logVersion {
 		if j.version == nil {
-			cols = append(cols, "UNDETECTED")
+			cols = append(cols, "VERSION_UNKNOWN")
 		} else {
-			cols = append(cols, fmt.Sprintf("%-10.10s", j.version.String()))
+			cols = append(cols, fmt.Sprintf("%-15.15s", j.version.String()))
 		}
 	}
 	cols = append(cols, fmt.Sprintf("%-10.10s", jState))
