@@ -27,10 +27,12 @@ func (i *arrayPaths) Set(value string) error {
 
 var myPoms arrayPaths
 var myClasses arrayPaths
+var myExcludes arrayPaths
 
 func main() {
 	flag.Var(&myPoms, "pom", "Module pom files to scan for.")
 	flag.Var(&myClasses, "class", "Module class files to scan for.")
+	flag.Var(&myExcludes, "exclude", "Exclude files when paths match.")
 	flag.Parse()
 
 	if flag.Arg(0) == "" || len(myPoms)+len(myClasses) < 1 {
@@ -43,56 +45,45 @@ func main() {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
-
-	for _, target := range flag.Args() {
-		if isDir, err := jar.IsDirectory(target); err != nil && !isDir {
-			j := jar.NewJar(target, *debug)
-			for _, path := range myClasses {
-				if err := j.AddClass(path); err != nil {
-					log.Fatalln(err)
+	if classes, err := jar.GetPaths(myClasses); err != nil {
+		log.Fatalln(err)
+	} else if poms, err := jar.GetPaths(myPoms); err != nil {
+		log.Fatalln(err)
+	} else if excludes, err := jar.GetPaths(myExcludes); err != nil {
+		log.Fatalln(err)
+	} else {
+		for _, target := range flag.Args() {
+			if isDir, err := jar.IsDirectory(target); err != nil && !isDir {
+				if j := jar.NewJar(target, *debug, classes, poms, excludes); j != nil {
+					j.CheckZip(target, nil, 0, 0)
+					j.PrintState(*logOk, *logHash, *logVersion)
 				}
+				return
 			}
-			for _, path := range myPoms {
-				if err := j.AddPom(path); err != nil {
-					log.Fatalln(err)
-				}
-			}
-			j.CheckZip(target, nil, 0, 0)
-			j.PrintState(*logOk, *logHash, *logVersion)
-			return
-		}
 
-		pool := make(chan struct{}, 8)
+			pool := make(chan struct{}, 8)
 
-		err := filepath.Walk(target,
-			func(osPathname string, info os.FileInfo, err error) error {
-				if filepath.Ext(osPathname) == ".jar" || filepath.Ext(osPathname) == ".war" {
-					j := jar.NewJar(osPathname, *debug)
-					for _, path := range myClasses {
-						if err := j.AddClass(path); err != nil {
-							log.Fatalln(err)
+			err := filepath.Walk(target,
+				func(osPathname string, info os.FileInfo, err error) error {
+					if filepath.Ext(osPathname) == ".jar" || filepath.Ext(osPathname) == ".war" {
+						if j := jar.NewJar(osPathname, *debug, classes, poms, excludes); j!= nil {
+							pool <- struct{}{}
+							go func() {
+								j.CheckPath()
+								j.PrintState(*logOk, *logHash, *logVersion)
+								<-pool
+							}()
 						}
 					}
-					for _, path := range myPoms {
-						if err := j.AddPom(path); err != nil {
-							log.Fatalln(err)
-						}
-					}
-					pool <- struct{}{}
-					go func() {
-						j.CheckPath()
-						j.PrintState(*logOk, *logHash, *logVersion)
-						<-pool
-					}()
-				}
-				return nil
-			})
-		if err != nil {
-			panic(err)
-		}
+					return nil
+				})
+			if err != nil {
+				panic(err)
+			}
 
-		for i := 0; i < cap(pool); i++ {
-			pool <- struct{}{}
+			for i := 0; i < cap(pool); i++ {
+				pool <- struct{}{}
+			}
 		}
 	}
 }

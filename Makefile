@@ -4,7 +4,7 @@ build:
 	go build -o ./log4shelldetect ./
 
 debug:
-	dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ./ -- -debug -ok ./test
+	dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ./ -- -debug -ok -class log4j/core/lookup/JndiLookup.class -pom META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties -exclude '.*test/excluded/.*' ./test/ex*
 
 run:
 	./log4shelldetect -debug -ok ./test

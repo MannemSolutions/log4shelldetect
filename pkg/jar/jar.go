@@ -18,6 +18,8 @@ import (
 )
 
 var printMutex = new(sync.Mutex)
+var filesMutex = new(sync.Mutex)
+var jarsMutex = new(sync.Mutex)
 
 type Jar struct {
 	name       string
@@ -27,26 +29,55 @@ type Jar struct {
 	debug      bool
 	poms       Paths
 	classes    Paths
+	excludes   Paths
 }
 
-func NewJar(name string, debug bool) (j *Jar) {
-	return &Jar{
-		name:    name,
-		debug:   debug,
-		poms:    GetPaths(),
-		classes: GetPaths(),
+type Jars map[string]*Jar
+
+var jars = make(Jars)
+var files = make(map[string]bool)
+
+func NewJar(name string, debug bool, myClasses Paths, myPoms Paths, myExcludes Paths) *Jar {
+	if evaluedName, err := filepath.EvalSymlinks(name); err == nil {
+		// If there is an error, we have a broken symlink.
+		// In that case we just create a jar for original name and leave to rest of the code
+		// to handle the issue and report properly.
+		// But this one seems fine, so let's use the actual file path for this jar.
+		name = evaluedName
+	}
+	jarsMutex.Lock()
+	defer jarsMutex.Unlock()
+	if _, exists := jars[name]; exists {
+		// This is already scanned. Let's skip this.
+		return nil
+	} else {
+		j := &Jar{
+			name:     name,
+			debug:    debug,
+			poms:     myPoms,
+			classes:  myClasses,
+			excludes: myExcludes,
+		}
+		jars[name] = j
+		return j
 	}
 }
 
-func (j *Jar) AddPom(path string) error {
-	return j.poms.Add(path)
-}
-
-func (j *Jar) AddClass(path string) error {
-	return j.classes.Add(path)
-}
-
 func (j Jar) CheckFile(path string) ([]byte, error) {
+	// follow symlinks, and make sure we don't double scan
+	if evaluatedPath, err := filepath.EvalSymlinks(path); err == nil {
+		path = evaluatedPath
+	}
+	filesMutex.Lock()
+	if _, exists := files[path]; exists {
+		return nil, nil
+	}
+	files[path] = true
+	filesMutex.Unlock()
+	if j.excludes.Matches(path) {
+		// Exclude if this file is on the excludes list
+		return nil, nil
+	}
 	if j.poms.Matches(path) || j.classes.Matches(path) {
 		if size, err := FileSize(path); err != nil {
 			return nil, fmt.Errorf("cannot get size of %s", path)
@@ -83,8 +114,15 @@ func (j Jar) CheckFileInZip(file *zip.File) ([]byte, error) {
 	return nil, nil
 }
 
+func (j *Jar) Excluded() bool {
+	return j.excludes.Matches(j.name)
+}
+
 func (j *Jar) CheckPath() {
 	var sVersion string
+	if j.Excluded() {
+		return
+	}
 	if isDir, err := IsDirectory(j.name); err != nil {
 		j.fileErrors = append(j.fileErrors, FileError{FileErrorNoFile})
 	} else if isDir {
@@ -115,9 +153,10 @@ func (j *Jar) CheckPath() {
 				} else if osPath == j.name {
 					// Skipping this jar because it is me
 				} else if path.Ext(osPath) == ".jar" || path.Ext(osPath) == ".war" {
-					subJar := Jar{name: osPath}
-					subJar.CheckPath()
-					j.setVersion(subJar.version)
+					if subJar := NewJar(osPath, j.debug, j.classes, j.poms, j.excludes); subJar != nil {
+						subJar.CheckPath()
+						j.setVersion(subJar.version)
+					}
 				}
 				return nil
 			})
@@ -268,6 +307,9 @@ func (j Jar) getState() string {
 }
 
 func (j Jar) PrintState(logOk bool, logHash bool, logVersion bool) {
+	if j.Excluded() {
+		return
+	}
 	var cols []string
 	printMutex.Lock()
 	defer printMutex.Unlock()
