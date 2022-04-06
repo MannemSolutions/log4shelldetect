@@ -21,29 +21,108 @@ var printMutex = new(sync.Mutex)
 var filesMutex = new(sync.Mutex)
 var jarsMutex = new(sync.Mutex)
 
-type Jar struct {
-	name       string
-	version    *version.Version
-	hash       string
-	fileErrors FileErrors
-	debug      bool
-	poms       Paths
-	classes    Paths
-	excludes   Paths
+type ScanTypes struct {
+	scanTypes map[string]ScanType
+}
+
+type ScanType struct {
+	poms     Paths
+	classes  Paths
+	versions []version.Version
+	hashes   []string
+}
+
+func NewScanTypes() *ScanTypes {
+	return &ScanTypes{
+		scanTypes: make(map[string]ScanType),
+	}
+}
+
+func (sts ScanTypes) Len () int {
+	return len(sts.scanTypes)
+}
+
+func (sts *ScanTypes) Add (name string, classes []string, poms []string) error {
+	if myClasses, err := NewPaths(classes); err != nil {
+		return err
+	} else if myPoms, err := NewPaths(poms); err != nil {
+		return err
+	} else {
+		st := ScanType{
+			classes: myClasses,
+			poms: myPoms,
+		}
+		sts.scanTypes[name] = st
+		return nil
+	}
+}
+
+func (sts ScanTypes) Matches (path string) bool {
+	for _, st := range sts.scanTypes {
+		if st.classes.Matches(path) {
+			return true
+		} else if st.poms.Matches(path) {
+			return true
+		}
+	}
+	return false
+}
+
+func (sts ScanTypes) Clone() *ScanTypes {
+	newSts := NewScanTypes()
+	for name, st := range sts.scanTypes {
+		newSts.scanTypes[name] = st.Clone()
+	}
+	return newSts
+}
+
+func (st *ScanType) AddHash(hash string) {
+	st.hashes = append(st.hashes, hash)
+}
+
+func (st *ScanType) AddVersion(version version.Version) {
+	st.versions = append(st.versions, version)
+}
+
+func (st ScanType) Clone() ScanType {
+	return ScanType{
+		poms: st.poms,
+		classes: st.classes,
+	}
+}
+
+func (st ScanType) LowestVersion() *version.Version {
+	if len(st.versions) == 0 {
+		return nil
+	}
+	minVersion := &st.versions[0]
+	for _, stVersion := range st.versions {
+		if stVersion.LessThan(minVersion) {
+			minVersion = &stVersion
+		}
+	}
+	return minVersion
 }
 
 type Jars map[string]*Jar
+type Jar struct {
+	name       string
+	fileErrors FileErrors
+	debug      bool
+	scanTypes  *ScanTypes
+	excludes   Paths
+}
 
 var jars = make(Jars)
 var files = make(map[string]bool)
 
-func NewJar(name string, debug bool, myClasses Paths, myPoms Paths, myExcludes Paths) *Jar {
-	if evaluedName, err := filepath.EvalSymlinks(name); err == nil {
+func NewJar(name string, debug bool, scanTypes *ScanTypes, myExcludes Paths) *Jar {
+	if evaluatedName, err := filepath.EvalSymlinks(name); err == nil {
 		// If there is an error, we have a broken symlink.
 		// In that case we just create a jar for original name and leave to rest of the code
 		// to handle the issue and report properly.
 		// But this one seems fine, so let's use the actual file path for this jar.
-		name = evaluedName
+		name = evaluatedName
 	}
 	jarsMutex.Lock()
 	defer jarsMutex.Unlock()
@@ -52,11 +131,10 @@ func NewJar(name string, debug bool, myClasses Paths, myPoms Paths, myExcludes P
 		return nil
 	} else {
 		j := &Jar{
-			name:     name,
-			debug:    debug,
-			poms:     myPoms,
-			classes:  myClasses,
-			excludes: myExcludes,
+			name:      name,
+			debug:     debug,
+			scanTypes: scanTypes,
+			excludes:  myExcludes,
 		}
 		jars[name] = j
 		return j
@@ -78,7 +156,7 @@ func (j Jar) CheckFile(path string) ([]byte, error) {
 		// Exclude if this file is on the excludes list
 		return nil, nil
 	}
-	if j.poms.Matches(path) || j.classes.Matches(path) {
+	if j.scanTypes.Matches(path) {
 		if size, err := FileSize(path); err != nil {
 			return nil, fmt.Errorf("cannot get size of %s", path)
 		} else if size > int64(math.Pow(2, 20)) {
@@ -94,7 +172,7 @@ func (j Jar) CheckFile(path string) ([]byte, error) {
 }
 
 func (j Jar) CheckFileInZip(file *zip.File) ([]byte, error) {
-	if j.poms.Matches(file.Name) || j.classes.Matches(file.Name) {
+	if j.scanTypes.Matches(file.Name) {
 		if file.UncompressedSize64 > uint64(math.Pow(2, 20)) {
 			return nil, errors.New("JndiLookup.class is too big")
 		}
@@ -114,7 +192,7 @@ func (j Jar) CheckFileInZip(file *zip.File) ([]byte, error) {
 	return nil, nil
 }
 
-func (j *Jar) Excluded() bool {
+func (j Jar) Excluded() bool {
 	return j.excludes.Matches(j.name)
 }
 
@@ -131,31 +209,35 @@ func (j *Jar) CheckPath() {
 				if data, err := j.CheckFile(osPath); err != nil {
 					return err
 				} else if data != nil {
-					if j.classes.Matches(osPath) {
-						//log.Printf("class: %s", osPath)
-						j.hash = fmt.Sprintf("%x", sha256.Sum256(data))
-						if j.debug {
-							log.Printf("%s:%s has hash %s", j.name, osPath, j.hash)
-						}
-					} else if j.poms.Matches(osPath) {
-						//log.Printf("pom: %s", osPath)
-						sVersion = versionFromPom(data)
-						if sVersion == "" {
-							return fmt.Errorf("could not find version in %s\n", osPath)
-						} else if j.version, err = version.NewVersion(sVersion); err != nil {
-							return fmt.Errorf("invalid version %s in %s\n", sVersion, osPath)
-						} else {
+					for stName, st := range j.scanTypes.scanTypes {
+						if st.classes.Matches(osPath) {
+							//log.Printf("class: %s", osPath)
+							hash := fmt.Sprintf("%x", sha256.Sum256(data))
+							st.AddHash(hash)
 							if j.debug {
-								log.Printf("%s:%s reads version %s", j.name, osPath, j.version)
+								log.Printf("%s:%s has hash %s", j.name, osPath, hash)
+							}
+						} else if st.poms.Matches(osPath) {
+							//log.Printf("pom: %s", osPath)
+							sVersion = versionFromPom(data)
+							if sVersion == "" {
+								return fmt.Errorf("could not find version in %s\n", osPath)
+							} else if myVersion, err := version.NewVersion(sVersion); err != nil {
+								return fmt.Errorf("invalid version %s in %s\n", sVersion, osPath)
+							} else {
+								st.AddVersion(*myVersion)
+								if j.debug {
+									log.Printf("%s:%s reads version %s", j.name, osPath, myVersion)
+								}
 							}
 						}
+						j.scanTypes.scanTypes[stName] = st
 					}
 				} else if osPath == j.name {
 					// Skipping this jar because it is me
 				} else if path.Ext(osPath) == ".jar" || path.Ext(osPath) == ".war" {
-					if subJar := NewJar(osPath, j.debug, j.classes, j.poms, j.excludes); subJar != nil {
+					if subJar := NewJar(osPath, j.debug, j.scanTypes, j.excludes); subJar != nil {
 						subJar.CheckPath()
-						j.setVersion(subJar.version)
 					}
 				}
 				return nil
@@ -217,24 +299,29 @@ func (j *Jar) CheckZip(pathToFile string, rd io.ReaderAt, size int64, depth int)
 			if data, err := j.CheckFileInZip(file); err != nil {
 				return err
 			} else if data != nil {
-				if j.classes.Matches(file.Name) {
-					//log.Printf("class: %s", file.Name)
-					j.hash = fmt.Sprintf("%x", sha256.Sum256(data))
-					if j.debug {
-						log.Printf("%s:%s has hash %s", j.name, file.Name, j.hash)
-					}
-				} else if j.poms.Matches(file.Name) {
-					//log.Printf("pom: %s", file.Name)
-					sVersion = versionFromPom(data)
-					if sVersion == "" {
-						return fmt.Errorf("could not find version in %s in %s\n", file.Name, j.name)
-					} else if j.version, err = version.NewVersion(sVersion); err != nil {
-						return fmt.Errorf("invalid version %s in %s in %s\n", sVersion, file.Name, j.name)
-					} else {
+				for stName, st := range j.scanTypes.scanTypes {
+					if st.classes.Matches(file.Name) {
+						//log.Printf("class: %s", file.Name)
+						hash := fmt.Sprintf("%x", sha256.Sum256(data))
+						st.AddHash(hash)
 						if j.debug {
-							log.Printf("%s:%s reads version %s", j.name, file.Name, j.version)
+							log.Printf("%s:%s has hash %s", j.name, file.Name, hash)
+						}
+					} else if st.poms.Matches(file.Name) {
+						//log.Printf("pom: %s", file.Name)
+						sVersion = versionFromPom(data)
+						if sVersion == "" {
+							return fmt.Errorf("could not find version in %s in %s\n", file.Name, j.name)
+						} else if myVersion, err := version.NewVersion(sVersion); err != nil {
+							return fmt.Errorf("invalid version %s in %s in %s\n", sVersion, file.Name, j.name)
+						} else {
+							st.AddVersion(*myVersion)
+							if j.debug {
+								log.Printf("%s:%s reads version %s", j.name, file.Name, myVersion)
+							}
 						}
 					}
+					j.scanTypes.scanTypes[stName] = st
 				}
 			} else if path.Ext(file.Name) == ".jar" || path.Ext(file.Name) == ".war" {
 				if file.UncompressedSize64 > 500*1024*1024 {
@@ -275,64 +362,57 @@ func (j *Jar) CheckZip(pathToFile string, rd io.ReaderAt, size int64, depth int)
 	}
 }
 
-func (j *Jar) setVersion(newVersion *version.Version) bool {
-	if newVersion == nil {
-		return false
-	}
-	if j.version == nil {
-		j.version = newVersion
-		return true
-	}
-	if j.version.GreaterThan(newVersion) {
-		j.version = newVersion
-		return true
-	}
-	return false
-}
-
-func (j Jar) getState() string {
-	if j.fileErrors.MaxID() > FileErrorNone {
-		return j.fileErrors.MaxID().String()
-	} else if j.version != nil {
-		if j.hash != "" {
+func (st ScanType) getState() string {
+	if len(st.versions) > 0 {
+		if len(st.hashes) > 0 {
 			return "DETECTED"
 		} else {
 			return "WORKAROUND"
 		}
-	} else if j.hash == "" {
+	} else if len(st.hashes) == 0 {
 		return "UNDETECTED"
 	} else {
 		return "DETECTED"
 	}
 }
 
-func (j Jar) PrintState(logOk bool, logHash bool, logVersion bool) {
+func (j Jar) PrintStates(logOk bool, logHash bool, logVersion bool) {
 	if j.Excluded() {
 		return
 	}
 	var cols []string
+	var jState string
 	printMutex.Lock()
 	defer printMutex.Unlock()
 
-	jState := j.getState()
-	if jState == "UNDETECTED" && !logOk {
-		return
-	}
-	if logHash {
-		hash := "UNKNOWN"
-		if j.hash != "" {
-			hash = j.hash
-		}
-		cols = append(cols, fmt.Sprintf("%-64.64s", hash))
-	}
-	if logVersion {
-		if j.version == nil {
-			cols = append(cols, "VERSION_UNKNOWN")
+	for name, st := range j.scanTypes.scanTypes {
+		cols = []string{fmt.Sprintf("%-20.20s", name)}
+
+		if j.fileErrors.MaxID() > FileErrorNone {
+			jState = j.fileErrors.MaxID().String()
 		} else {
-			cols = append(cols, fmt.Sprintf("%-15.15s", j.version.String()))
+			jState = st.getState()
 		}
+		if jState == "UNDETECTED" && !logOk {
+			continue
+		}
+		if logHash {
+			hash := "UNKNOWN"
+			if len(st.hashes) > 0 {
+				// multiple hashes. Just use last...
+				hash = st.hashes[len(st.hashes)-1]
+			}
+			cols = append(cols, fmt.Sprintf("%-64.64s", hash))
+		}
+		if logVersion {
+			if lowestVersion := st.LowestVersion(); lowestVersion == nil {
+				cols = append(cols, "VERSION_UNKNOWN")
+			} else {
+				cols = append(cols, fmt.Sprintf("%-15.15s", lowestVersion.String()))
+			}
+		}
+		cols = append(cols, fmt.Sprintf("%-10.10s", jState))
+		cols = append(cols, j.name)
+		fmt.Println(strings.Join(cols, " | "))
 	}
-	cols = append(cols, fmt.Sprintf("%-10.10s", jState))
-	cols = append(cols, j.name)
-	fmt.Println(strings.Join(cols, " "))
 }

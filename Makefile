@@ -1,13 +1,13 @@
 all: fmt build test
 
 build:
-	go build -o ./log4shelldetect ./
+	go build -o ./jarscanner ./cmd/jarscanner/
 
 debug:
-	dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ./ -- -debug -ok -class log4j/core/lookup/JndiLookup.class -pom META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties -exclude '.*test/excluded/.*' ./test/ex*
+	dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ./cmd/jarscanner/ -- -debug -ok -class log4j/core/lookup/JndiLookup.class -pom META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties -config ./jarscanner.yml -exclude '.*test/excluded/.*' ./test/ex*
 
 run:
-	./log4shelldetect -debug -ok ./test
+	./jarscannert -debug -ok ./test
 
 fmt:
 	gofmt -w .
