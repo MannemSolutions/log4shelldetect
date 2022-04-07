@@ -34,6 +34,7 @@ jobs:
           goarch: ${{ matrix.goarch }}
           project_path: "./"
           extra_files: LICENSE README.md
+          pre_command: ./set_version.sh
           sha256sum: TRUE
   push_to_registry:
     name: Push Docker image to Docker Hub
