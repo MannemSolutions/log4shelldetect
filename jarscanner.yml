@@ -1,0 +1,28 @@
+---
+scan_types:
+  CLOUD:
+    classes:
+    - springframework/cloud/function/core
+    poms:
+    - org.springframework.cloud/spring-cloud-function-core/pom.properties
+  BEANS:
+    classes:
+      - org/springframework/beans
+  LOG4J:
+    classes:
+    - log4j/core/lookup/JndiLookup.class
+    poms:
+    - META-INF/maven/org.apache.logging.log4j/log4j-core/pom.properties
+
+excludes:
+  - /tmp
+
+print_options:
+  lib_hash: true
+  jar_hash: true
+  lib_version: true
+  ok: false
+  debug: false
+
+scan_paths:
+  - ./test/

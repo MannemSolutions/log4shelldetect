@@ -1,13 +1,13 @@
 all: fmt build test
 
 build:
-	go build -o ./log4shelldetect ./
+	go build -o ./jarscanner ./cmd/jarscanner/
 
 debug:
-	dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ./ -- -debug -ok ./test
+	dlv debug --headless --listen=:2345 --api-version=2 --accept-multiclient ./cmd/jarscanner/ -- -config jarscanner.yml
 
 run:
-	./log4shelldetect -debug -ok ./test
+	./jarscannert -debug -ok ./test
 
 fmt:
 	gofmt -w .
