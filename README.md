@@ -1,4 +1,4 @@
-# log4shelldetect
+# jarscanner
 
 Scans a file or folder recursively for jar files that contain log4j and other modules by inspecting the class paths inside the jar.
 
