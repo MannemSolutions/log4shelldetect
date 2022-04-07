@@ -21,89 +21,6 @@ var printMutex = new(sync.Mutex)
 var filesMutex = new(sync.Mutex)
 var jarsMutex = new(sync.Mutex)
 
-type ScanTypes struct {
-	scanTypes map[string]ScanType
-}
-
-type ScanType struct {
-	poms     Paths
-	classes  Paths
-	versions []version.Version
-	hashes   []string
-}
-
-func NewScanTypes() *ScanTypes {
-	return &ScanTypes{
-		scanTypes: make(map[string]ScanType),
-	}
-}
-
-func (sts ScanTypes) Len () int {
-	return len(sts.scanTypes)
-}
-
-func (sts *ScanTypes) Add (name string, classes []string, poms []string) error {
-	if myClasses, err := NewPaths(classes); err != nil {
-		return err
-	} else if myPoms, err := NewPaths(poms); err != nil {
-		return err
-	} else {
-		st := ScanType{
-			classes: myClasses,
-			poms: myPoms,
-		}
-		sts.scanTypes[name] = st
-		return nil
-	}
-}
-
-func (sts ScanTypes) Matches (path string) bool {
-	for _, st := range sts.scanTypes {
-		if st.classes.Matches(path) {
-			return true
-		} else if st.poms.Matches(path) {
-			return true
-		}
-	}
-	return false
-}
-
-func (sts ScanTypes) Clone() *ScanTypes {
-	newSts := NewScanTypes()
-	for name, st := range sts.scanTypes {
-		newSts.scanTypes[name] = st.Clone()
-	}
-	return newSts
-}
-
-func (st *ScanType) AddHash(hash string) {
-	st.hashes = append(st.hashes, hash)
-}
-
-func (st *ScanType) AddVersion(version version.Version) {
-	st.versions = append(st.versions, version)
-}
-
-func (st ScanType) Clone() ScanType {
-	return ScanType{
-		poms: st.poms,
-		classes: st.classes,
-	}
-}
-
-func (st ScanType) LowestVersion() *version.Version {
-	if len(st.versions) == 0 {
-		return nil
-	}
-	minVersion := &st.versions[0]
-	for _, stVersion := range st.versions {
-		if stVersion.LessThan(minVersion) {
-			minVersion = &stVersion
-		}
-	}
-	return minVersion
-}
-
 type Jars map[string]*Jar
 type Jar struct {
 	name       string
@@ -111,6 +28,7 @@ type Jar struct {
 	debug      bool
 	scanTypes  *ScanTypes
 	excludes   Paths
+	hash       string
 }
 
 var jars = make(Jars)
@@ -362,21 +280,23 @@ func (j *Jar) CheckZip(pathToFile string, rd io.ReaderAt, size int64, depth int)
 	}
 }
 
-func (st ScanType) getState() string {
-	if len(st.versions) > 0 {
-		if len(st.hashes) > 0 {
-			return "DETECTED"
-		} else {
-			return "WORKAROUND"
-		}
-	} else if len(st.hashes) == 0 {
-		return "UNDETECTED"
-	} else {
-		return "DETECTED"
+func (j *Jar) Hash() string {
+	if j.hash != "" {
+		return j.hash
 	}
+	if isDir, err := IsDirectory(j.name); err != nil {
+		// Only an issue for broken symlinks
+		//log.Printf("Could not read hash of %s, IsDirectory issue", j.name)
+		return ""
+	} else if isDir {
+		j.hash = fmt.Sprintf("%x", HashDir(j.name))
+	} else {
+		j.hash = fmt.Sprintf("%x", HashFile(j.name))
+	}
+	return j.hash
 }
 
-func (j Jar) PrintStates(logOk bool, logHash bool, logVersion bool) {
+func (j Jar) PrintStates(logOk bool, logJarHash bool, logLibHash bool, logVersion bool) {
 	if j.Excluded() {
 		return
 	}
@@ -396,13 +316,16 @@ func (j Jar) PrintStates(logOk bool, logHash bool, logVersion bool) {
 		if jState == "UNDETECTED" && !logOk {
 			continue
 		}
-		if logHash {
-			hash := "UNKNOWN"
+		if logLibHash {
+			cols = append(cols, fmt.Sprintf("%-64.64s", j.Hash()))
+		}
+		if logLibHash {
+			libHash := "UNKNOWN"
 			if len(st.hashes) > 0 {
 				// multiple hashes. Just use last...
-				hash = st.hashes[len(st.hashes)-1]
+				libHash = st.hashes[len(st.hashes)-1]
 			}
-			cols = append(cols, fmt.Sprintf("%-64.64s", hash))
+			cols = append(cols, fmt.Sprintf("%-64.64s", libHash))
 		}
 		if logVersion {
 			if lowestVersion := st.LowestVersion(); lowestVersion == nil {

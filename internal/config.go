@@ -39,7 +39,8 @@ type ExcludesConfig  []string
 type ScanPathsConfig []string
 
 type PrintOptionsConfig struct {
-	Hash       bool `yaml:"hash"`
+	LibHash    bool `yaml:"lib_hash"`
+	JarHash    bool `yaml:"jar_hash"`
 	LibVersion bool `yaml:"lib_version"`
 	Ok         bool `yaml:"ok"`
 	Debug      bool `yaml:"debug"`
@@ -72,7 +73,8 @@ func NewConfig() (config ScannerConfig, err error) {
 		debug      bool
 		version    bool
 		logOk      bool
-		logHash    bool
+		libHash    bool
+		jarHash    bool
 		logVersion bool
 		configFile string
 	 	myScanType string
@@ -85,7 +87,8 @@ func NewConfig() (config ScannerConfig, err error) {
 	flag.BoolVar(&debug, "debug", false, "Add debugging output")
 	flag.BoolVar(&version, "version", false, "Show version information")
 	flag.BoolVar(&logOk, "ok", false, "also report jar files without the specified modules")
-	flag.BoolVar(&logHash, "hash", false, "print sha-256 hash of detected .class file")
+	flag.BoolVar(&libHash, "libhash", false, "print sha-256 hash of one of the detected .class file")
+	flag.BoolVar(&jarHash, "jarhash", false, "print sha-256 hash of the jar file or dir")
 	flag.BoolVar(&logVersion, "libversion", false, "print version of library if detected")
 	flag.StringVar(&configFile, "config", os.Getenv(envConfName), "Path to configfile")
 	flag.Parse()
@@ -123,8 +126,11 @@ func NewConfig() (config ScannerConfig, err error) {
 	if logOk {
 		config.PrintOption.Ok = true
 	}
-	if logHash {
-		config.PrintOption.Hash = true
+	if libHash {
+		config.PrintOption.LibHash = true
+	}
+	if jarHash {
+		config.PrintOption.JarHash = true
 	}
 	config.Excludes = append(config.Excludes, myExcludes...)
 	if len(myClasses) + len(myPoms) > 0 {

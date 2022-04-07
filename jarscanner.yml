@@ -18,7 +18,8 @@ excludes:
   - /tmp
 
 print_options:
-  hash: true
+  lib_hash: true
+  jar_hash: true
   lib_version: true
   ok: false
   debug: false

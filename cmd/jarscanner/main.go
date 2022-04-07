@@ -24,7 +24,8 @@ func main() {
 				st = st.Clone()
 				if j := jar.NewJar(target, config.PrintOption.Debug, st, excludes); j != nil {
 					j.CheckZip(target, nil, 0, 0)
-					j.PrintStates(config.PrintOption.Ok, config.PrintOption.Hash, config.PrintOption.LibVersion)
+					j.PrintStates(config.PrintOption.Ok, config.PrintOption.JarHash, config.PrintOption.LibHash,
+						config.PrintOption.LibVersion)
 				}
 				return
 			}
@@ -39,7 +40,7 @@ func main() {
 							pool <- struct{}{}
 							go func() {
 								j.CheckPath()
-								j.PrintStates(config.PrintOption.Ok, config.PrintOption.Hash, config.PrintOption.LibVersion)
+								j.PrintStates(config.PrintOption.Ok, config.PrintOption.JarHash, config.PrintOption.LibHash, config.PrintOption.LibVersion)
 								<-pool
 							}()
 						}
