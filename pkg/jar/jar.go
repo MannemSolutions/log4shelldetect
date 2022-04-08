@@ -135,6 +135,16 @@ func (j *Jar) CheckPath() {
 							if j.debug {
 								log.Printf("%s:%s has hash %s", j.name, osPath, hash)
 							}
+							if sVersion, exists := st.version_hashes[hash]; exists {
+								if myVersion, err := version.NewVersion(sVersion); err != nil {
+									return fmt.Errorf("invalid version %s in hash %s\n", sVersion, hash)
+								} else {
+									st.AddVersion(*myVersion)
+									if j.debug {
+										log.Printf("%s hash %s reads version %s", j.name, hash, myVersion)
+									}
+								}
+							}
 						} else if st.poms.Matches(osPath) {
 							//log.Printf("pom: %s", osPath)
 							sVersion = versionFromPom(data)
@@ -224,6 +234,16 @@ func (j *Jar) CheckZip(pathToFile string, rd io.ReaderAt, size int64, depth int)
 						st.AddHash(hash)
 						if j.debug {
 							log.Printf("%s:%s has hash %s", j.name, file.Name, hash)
+						}
+						if sVersion, exists := st.version_hashes[hash]; exists {
+							if myVersion, err := version.NewVersion(sVersion); err != nil {
+								return fmt.Errorf("invalid version %s in hash %s\n", sVersion, hash)
+							} else {
+								st.AddVersion(*myVersion)
+								if j.debug {
+									log.Printf("%s hash %s reads version %s", j.name, hash, myVersion)
+								}
+							}
 						}
 					} else if st.poms.Matches(file.Name) {
 						//log.Printf("pom: %s", file.Name)
@@ -316,7 +336,7 @@ func (j Jar) PrintStates(logOk bool, logJarHash bool, logLibHash bool, logVersio
 		if jState == "UNDETECTED" && !logOk {
 			continue
 		}
-		if logLibHash {
+		if logJarHash {
 			cols = append(cols, fmt.Sprintf("%-64.64s", j.Hash()))
 		}
 		if logLibHash {

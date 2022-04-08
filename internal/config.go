@@ -21,14 +21,15 @@ const (
 
 type ScanTypesConfig map[string]ScanTypeConfig
 type ScanTypeConfig struct {
-	Classes []string `yaml:"classes"`
-	Poms    []string `yaml:"poms"`
+	Classes            []string          `yaml:"classes"`
+	ClassVersionHashes map[string]string `yaml:"version_hashes"`
+	Poms               []string          `yaml:"poms"`
 }
 
 func (stc ScanTypesConfig) ToScanTypes() (*jar.ScanTypes, error) {
 	sts := jar.NewScanTypes()
 	for name, st := range stc {
-		if err := sts.Add(name, st.Classes, st.Poms); err != nil {
+		if err := sts.Add(name, st.Classes, st.Poms, st.ClassVersionHashes); err != nil {
 			return nil, err
 		}
 	}

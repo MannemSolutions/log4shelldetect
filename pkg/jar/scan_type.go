@@ -5,10 +5,11 @@ import (
 )
 
 type ScanType struct {
-	poms     Paths
-	classes  Paths
-	versions []version.Version
-	hashes   []string
+	poms           Paths
+	classes        Paths
+	version_hashes map[string]string
+	versions       []version.Version
+	hashes         []string
 }
 
 func (st *ScanType) AddHash(hash string) {
@@ -23,6 +24,7 @@ func (st ScanType) Clone() ScanType {
 	return ScanType{
 		poms: st.poms,
 		classes: st.classes,
+		version_hashes: st.version_hashes,
 	}
 }
 
@@ -67,15 +69,16 @@ func (sts ScanTypes) Len () int {
 	return len(sts.scanTypes)
 }
 
-func (sts *ScanTypes) Add (name string, classes []string, poms []string) error {
+func (sts *ScanTypes) Add (name string, classes []string, poms []string, versionHashes map[string]string) error {
 	if myClasses, err := NewPaths(classes); err != nil {
 		return err
 	} else if myPoms, err := NewPaths(poms); err != nil {
 		return err
 	} else {
 		st := ScanType{
-			classes: myClasses,
-			poms: myPoms,
+			classes:        myClasses,
+			poms:           myPoms,
+			version_hashes: versionHashes,
 		}
 		sts.scanTypes[name] = st
 		return nil
