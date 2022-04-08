@@ -24,6 +24,7 @@ func (st ScanType) Clone() ScanType {
 	return ScanType{
 		poms: st.poms,
 		classes: st.classes,
+		version_hashes: st.version_hashes,
 	}
 }
 

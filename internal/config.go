@@ -22,7 +22,7 @@ const (
 type ScanTypesConfig map[string]ScanTypeConfig
 type ScanTypeConfig struct {
 	Classes            []string          `yaml:"classes"`
-	ClassVersionHashes map[string]string `yaml:"class_version_hashes"`
+	ClassVersionHashes map[string]string `yaml:"version_hashes"`
 	Poms               []string          `yaml:"poms"`
 }
 
