@@ -38,14 +38,14 @@ func HashFile(path string) []byte {
 
 	f, err := os.Open(path)
 	if err != nil {
-		log.Printf("Could not read hash of %s, os.Open issue", path)
+		log.Printf("Could not read hash of %s, os.Open issue: %v", path, err)
 		return nil
 	}
 	defer f.Close()
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
-		log.Printf("Could not read hash of %s, io.Copy issue", path)
+		log.Printf("Could not read hash of %s, io.Copy issue: %v", path, err)
 		return nil
 	}
 
