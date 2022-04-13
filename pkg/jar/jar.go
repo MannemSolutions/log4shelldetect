@@ -66,6 +66,7 @@ func (j Jar) CheckFile(path string) ([]byte, error) {
 	}
 	filesMutex.Lock()
 	if _, exists := files[path]; exists {
+		filesMutex.Unlock()
 		return nil, nil
 	}
 	files[path] = true
